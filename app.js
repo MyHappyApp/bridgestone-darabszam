@@ -369,7 +369,11 @@
 
     if (loaded) {
       const rows = [...entries.values()];
-      const total = adjusted ? monthlySummary(rows).corrected : monthlySummary(rows).base;
+      const total = adjusted
+        ? rows.filter(hasCounts).length
+        ? rows.reduce((sum, row) => sum + (balance(row) ?? 0), 0)
+        : null
+        : monthlySummary(rows).base;
 
       paintBalance($("monthly-balance"), total, " db");
       $("recorded-days").textContent = rows.length;
