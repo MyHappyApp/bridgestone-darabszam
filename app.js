@@ -160,11 +160,34 @@
     $("auth-form").hidden = show;
     $("auth-section").querySelector(".auth-tabs").hidden = show;
     $("forgot-password").hidden = show;
+    $("google-login-area").hidden = show;
     if (show) {
       $("recovery-email").value = $("email").value.trim();
       message("recovery-request-message");
     }
   }
+
+  $("google-login-button").addEventListener("click", async () => {
+    if (!client) {
+      message("auth-message", "A bejelentkezési rendszer még nem töltődött be. Frissítsd az oldalt.", true);
+      return;
+    }
+    const button = $("google-login-button");
+    button.disabled = true;
+    message("auth-message", "Átirányítás a Google bejelentkezéshez…");
+    try {
+      const redirectTo = window.location.origin + window.location.pathname;
+      const { error } = await client.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo }
+      });
+      if (error) throw error;
+      setTimeout(() => { button.disabled = false; }, 8000);
+    } catch (error) {
+      message("auth-message", errorText(error), true);
+      button.disabled = false;
+    }
+  });
 
   $("forgot-password").addEventListener("click", () => showRecoveryRequest(true));
   $("cancel-recovery").addEventListener("click", () => showRecoveryRequest(false));
@@ -521,6 +544,50 @@
 
   $("raw-mode").addEventListener("click", () => setMode(false));
   $("adjusted-mode").addEventListener("click", () => setMode(true));
+
+  // PWA telepítés: az automatikus telepítési ablakot csak a támogatott böngészők adják.
+  let pendingInstallPrompt = null;
+  const installButton = $("install-app-button");
+  const installMessage = $("install-app-message");
+  const isInstalled = () => window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  function updateInstallUI() {
+    if (isInstalled()) {
+      installButton.hidden = true;
+      installMessage.textContent = "Az alkalmazás már telepítve van, és önálló ablakban fut.";
+    } else {
+      installButton.hidden = false;
+      installMessage.textContent = pendingInstallPrompt ? "Készen áll a telepítésre." : "Ha nem jelenik meg telepítési ablak, Androidon a böngésző menüjében válaszd a Telepítés / Hozzáadás a kezdőképernyőhöz lehetőséget. iPhone-on Safariban: Megosztás → Főképernyőhöz adás.";
+    }
+  }
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    pendingInstallPrompt = event;
+    updateInstallUI();
+  });
+  window.addEventListener("appinstalled", () => {
+    pendingInstallPrompt = null;
+    updateInstallUI();
+  });
+  installButton.addEventListener("click", async () => {
+    if (!pendingInstallPrompt) { updateInstallUI(); return; }
+    const prompt = pendingInstallPrompt;
+    pendingInstallPrompt = null;
+    try {
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
+      installMessage.textContent = choice?.outcome === "accepted" ? "A telepítés elindult." : "A telepítést most nem választottad.";
+    } catch {
+      installMessage.textContent = "A telepítés most nem indítható. Próbáld meg a böngésző menüjéből.";
+    }
+  });
+  updateInstallUI();
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {
+        // A napló online módban szervizmunkás nélkül is működik.
+      });
+    });
+  }
 
   $("settings-button").addEventListener("click", () => $("settings-dialog").showModal());
   $("close-settings").addEventListener("click", () => $("settings-dialog").close());
